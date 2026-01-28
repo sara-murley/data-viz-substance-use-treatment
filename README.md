@@ -91,19 +91,19 @@ Two Shiny applications are included:
 #### 1. State Admissions Explorer  
 `code/state-admissions-explorer/`
 
-- `prep_data.R`: prepares and aggregates data for the app  
-- `app.R`: Shiny application
+- `prep-state-data.R`: prepares and aggregates data for the app  
+- `state-admissions-app.R`: Shiny application
 
-**[Live dashboard:](https://smurley3.shinyapps.io/shinyapp/)**  
+**[Live dashboard](https://smurley3.shinyapps.io/shinyapp/)**  
 
 ---
 
 #### 2. State Facility Characteristics Explorer  
 `code/state-facility-characteristics-explorer/`
 
-- `app.R`: Shiny application
+- `state-facility-characteristics-app.R`: Shiny application
 
-**[Live dashboard:](https://smurley3.shinyapps.io/facility_characteristics/)**  
+**[Live dashboard](https://smurley3.shinyapps.io/facility_characteristics/)**  
 
 ---
 
