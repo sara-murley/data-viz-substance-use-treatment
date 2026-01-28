@@ -1,0 +1,24 @@
+# --- Secrets ---
+.env
+
+# --- Data outputs ---
+*.csv
+*.tsv
+*.parquet
+*.rdata
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.log
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env/
+.venv/
+
+# --- OS ---
+.DS_Store
+Thumbs.db

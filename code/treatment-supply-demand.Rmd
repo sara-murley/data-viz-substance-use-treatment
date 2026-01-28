@@ -1,0 +1,156 @@
+---
+title: "Visualization 2: Treatment Access for Substance Use Disorders"
+author: "Sara Murley"
+output: html_document
+---
+
+```{r setup, echo = FALSE, include = FALSE}
+# Libraries 
+library(tidyverse)
+library(scales)
+```
+
+```{r, echo = FALSE}
+# Import data
+teds <- readr::read_csv("../data/tedsa_puf_2023.csv", show_col_types = FALSE)
+nsumhss <- readr::read_csv("../data/NSUMHSS_2023_PUF_CSV.csv", show_col_types = FALSE)
+```
+
+```{r, echo = FALSE}
+# State crosswalk 
+stfips_crosswalk <- tribble(
+  ~STFIPS, ~State, ~Abbreviation,
+  1,"Alabama","AL", 2,"Alaska","AK", 4,"Arizona","AZ", 5,"Arkansas","AR",
+  6,"California","CA", 8,"Colorado","CO", 9,"Connecticut","CT", 10,"Delaware","DE",
+  11,"District of Columbia","DC", 12,"Florida","FL", 13,"Georgia","GA",
+  15,"Hawaii","HI", 16,"Idaho","ID", 17,"Illinois","IL", 18,"Indiana","IN",
+  19,"Iowa","IA", 20,"Kansas","KS", 21,"Kentucky","KY", 22,"Louisiana","LA",
+  23,"Maine","ME", 24,"Maryland","MD", 25,"Massachusetts","MA", 26,"Michigan","MI",
+  27,"Minnesota","MN", 28,"Mississippi","MS", 29,"Missouri","MO", 30,"Montana","MT",
+  31,"Nebraska","NE", 32,"Nevada","NV", 33,"New Hampshire","NH", 34,"New Jersey","NJ",
+  35,"New Mexico","NM", 36,"New York","NY", 37,"North Carolina","NC",
+  38,"North Dakota","ND", 39,"Ohio","OH", 40,"Oklahoma","OK", 41,"Oregon","OR",
+  42,"Pennsylvania","PA", 44,"Rhode Island","RI", 45,"South Carolina","SC",
+  46,"South Dakota","SD", 47,"Tennessee","TN", 48,"Texas","TX", 49,"Utah","UT",
+  50,"Vermont","VT", 51,"Virginia","VA", 53,"Washington","WA",
+  54,"West Virginia","WV", 55,"Wisconsin","WI", 56,"Wyoming","WY",
+  72,"Puerto Rico","PR"
+)
+```
+
+```{r, echo = FALSE}
+# Prep TEDS data
+teds_state <- teds %>%
+  group_by(STFIPS) %>%
+  summarise(
+    treatment_count = n(),
+  ) %>%
+  left_join(stfips_crosswalk, by = "STFIPS")
+
+# Get facilities data
+facilities_state <- nsumhss %>%
+  group_by(LOCATIONSTATE) %>%
+  summarise(facility_count = n())
+
+# Join 
+state_summary <- teds_state %>%
+  inner_join(facilities_state, by = c("Abbreviation" = "LOCATIONSTATE"))
+```
+
+```{r, echo = FALSE}
+# Fit log-log linear model
+fit_log <- lm(log(treatment_count) ~ log(facility_count), data = state_summary)
+
+# Add predicted values and residuals to dataset
+state_summary <- state_summary %>%
+  mutate(
+    predicted_log = predict(fit_log),
+    log_residual = log(treatment_count) - predicted_log,
+    ratio = exp(log_residual)  # actual / predicted
+  )
+```
+
+```{r echo = FALSE}
+# Define a small multiplicative nudge for plotting (25% above the points)
+extremes <- state_summary %>%
+  arrange(desc(log_residual)) %>% slice(1:5) %>%
+  bind_rows(
+    state_summary %>%
+      arrange(log_residual) %>% slice(1:5)
+  ) %>%
+  # Add multiplicative nudge for labels
+  mutate(
+    y_label = treatment_count * 1.25  # 25% above the point
+  )
+```
+
+```{r, echo = FALSE}
+# Function to convert log-residuals to human-readable labels with plain 'x'
+log_label_fun <- function(x) {
+  sapply(x, function(val) {
+    if (val == 0) {
+      "0 = as expected"
+    } else if (val > 0) {
+      paste0(val, " ≈ ", round(exp(val), 1), "x more")
+    } else {
+      paste0(val, " ≈ ", round(exp(val), 2), "x less")
+    }
+  })
+}
+```
+
+```{r, echo = FALSE}
+# Define your custom theme colors
+custom_palette <- c("#b0d5cd", "#799da7", "#20494d", "#183c40")  # light to dark
+```
+
+```{r, echo = FALSE}
+# Plot with theme colors
+map_plot <- ggplot(state_summary, aes(x = facility_count, y = treatment_count)) +
+  geom_point(aes(color = log_residual), size = 4, alpha = 0.7) +
+  geom_text(data = extremes, aes(label = Abbreviation, y = y_label),
+            hjust = 0.5, size = 3.5, fontface = "bold") +
+  geom_line(aes(y = exp(predicted_log)), color = "#426345", linetype = "dashed") +  # dark green line
+  scale_color_gradientn(
+    colors = custom_palette,
+    name = "Deviation from Expected Admissions",
+    labels = log_label_fun
+  ) +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Treatment Demand vs. Facility Supply by State",
+    x = "Number of Facilities (NSUMHSS, log scale)",
+    y = "Number of Treatment Admissions (TEDS, log scale)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 10, color = "#20494d"),
+    legend.title = element_text(size = 11, face = "bold", color = "#183c40"),
+    plot.title = element_text(size = 16, face = "bold", color = "#183c40"),
+  )
+```
+
+```{r, echo = FALSE}
+map_plot
+```
+
+```{r, include = FALSE}
+# Save as PNG
+ggsave(
+  filename = "../figures/treatment-supply-demand.png",
+  plot = map_plot,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+```
+
+**Figure 2. Treatment Demand vs. Facility Supply by State.**
+
+Each point represents a state, with the x-axis showing the number of facilities (NSUMHSS) and the y-axis showing the number of treatment admissions (TEDS), both on a log scale. The dashed line indicates the expected admissions based on a log-linear relationship with facility count. Point color shows the deviation from expected admissions: red = more admissions than expected (relatively overwhelmed facilities), blue = fewer admissions than expected (relatively underused facilities). States that deviate the most from their expected values (in either direction) are labeled for highlighting. For example, Arizona (AZ) and South Dakota (SD) have higher admissions relative to their number of facilities, suggesting a need for additional treatment capacity. The log-residuals are calculated as log(actual/predicted), so a value of +2 indicates ~7.4× more admissions than expected, while -2 indicates ~0.14× the expected admissions. This figure helps identify states where capacity and demand are mismatched, informing decisions about resource allocation for substance use treatment facilities. Further analysis will explore the capacity and type of these facilities relative to demand, given that a small number of facilities does not necessarily mean they are unable to handle demand (there may be a few large facilities, as opposed to many small facilities). 
+
+Data on facility counts come from the National Substance Use and Mental Health Services Survey (N-SUMHSS) 2023 (Substance Abuse and Mental Health Services Administration, 2024). The full codebook is available at [SAMHSA](https://www.samhsa.gov/data/).
+
+Data on treatment episodes come from the Treatment Episode Data Set Admissions (TEDS-A) 2023 (Substance Abuse and Mental Health Services Administration, 2025). The full codebook is available at [SAMHSA](https://www.samhsa.gov/data/). 

@@ -1,0 +1,137 @@
+---
+title: "Visualization 3: Relapse Patterns by Drug Type"
+author: "Sara Murley"
+output: html_document
+---
+
+```{r setup, echo = FALSE, include = FALSE}
+# Libraries 
+library(tidyverse)
+library(scales)
+```
+
+```{r, echo = FALSE}
+# Import data 
+teds = read.csv("../data/tedsa_puf_2023.csv")
+```
+
+```{r, echo = FALSE}
+# Recode drug and prior treatment categories (0 vs 1+)
+teds <- teds %>%
+  mutate(
+    SUB1_group = case_when(
+      SUB1 %in% c(2) ~ "Alcohol",
+      SUB1 %in% c(3) ~ "Cocaine/Crack",
+      SUB1 %in% c(4) ~ "Marijuana/Hashish",
+      SUB1 %in% c(5, 6, 7) ~ "Opioids (Heroin & Other)",
+      SUB1 %in% c(10, 11, 12) ~ "Amphetamines/Meth",
+      SUB1 %in% c(13, 14, 15, 16) ~ "Sedatives/Tranquilizers",
+      SUB1 %in% c(8, 9, 17, 18, 19) ~ "Other Drugs",
+      TRUE ~ NA_character_
+    ),
+    NOPRIOR_group = ifelse(NOPRIOR == 0, "0 prior", "1+ prior")
+  ) %>%
+  filter(!is.na(SUB1_group))
+
+```
+
+
+```{r, echo = FALSE}
+# Summarize and calculate percentages
+summary_df <- teds %>%
+  count(SUB1_group, NOPRIOR_group) %>%
+  group_by(SUB1_group) %>%
+  mutate(
+    total = sum(n),
+    perc = n / total * 100
+  ) %>%
+  ungroup()
+
+```
+
+```{r, echo = FALSE}
+# Compute total counts per drug for right-side labels
+totals_df <- summary_df %>%
+  group_by(SUB1_group) %>%
+  summarise(total_count = sum(n))
+
+```
+
+
+```{r, echo = FALSE}
+# Order drugs by % of first-time admissions
+sort_order <- summary_df %>%
+  filter(NOPRIOR_group == "0 prior") %>%
+  arrange(desc(perc)) %>%
+  pull(SUB1_group)
+summary_df$SUB1_group <- factor(summary_df$SUB1_group, levels = sort_order)
+```
+
+```{r, echo = FALSE}
+# Define color scale (lighter → darker green)
+colors <- c(
+  "0 prior" = "#b0d5cd",  # light green
+  "1+ prior" = "#426345"  # dark green
+)
+```
+
+
+```{r, echo = FALSE}
+relapse_plot <- ggplot(summary_df, aes(x = SUB1_group, y = perc, fill = NOPRIOR_group)) +
+  geom_col(color = "white") +
+  geom_text(aes(label = paste0(round(perc), "%")), 
+            position = position_stack(vjust = 0.5), size = 3.5, color = "white") +
+  geom_text(data = totals_df, aes(x = SUB1_group, y = 105, label = scales::comma(total_count)), 
+            inherit.aes = FALSE, hjust = 0, size = 3.5, color = "#183c40") +
+  coord_flip() +
+  scale_fill_manual(
+    values = colors,
+    breaks = c("1+ prior", "0 prior"),
+    guide = guide_legend(nrow = 1, reverse = TRUE)
+  ) +
+  scale_y_continuous(
+    labels = NULL,
+    breaks = seq(0, 100, 25),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  labs(
+    title = "Readmission Patterns by Drug Type", 
+    subtitle = "Dark bars represent readmissions; light bars represent first-time admissions; total admission counts on the right", 
+    x = NULL,
+    y = NULL,
+    fill = "Prior Episodes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, color = "#183c40"),
+    plot.subtitle = element_text(size = 11, color = "#20494d"),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10, color = "#20494d"),
+    legend.title = element_text(size = 11, face = "bold", color = "#183c40"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+
+relapse_plot
+```
+
+```{r, include = FALSE}
+# Save the plot as PNG
+ggsave(
+  filename = "../figures/relapse-patterns.png",
+  plot = relapse_plot,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+```
+
+**Figure 3. Relapse Patterns by Drug Type**
+
+The visualization shows the distribution of prior treatment episodes within each drug type. Each horizontal bar represents a substance, with the lighter segment showing first-time admissions (0 prior episodes) and the darker segment showing individuals with one or more prior treatment episodes (1+). Total admissions for each drug type are displayed at the right end of the bars.
+
+The chart highlights that opioid-related admissions are both common and more likely to involve repeat treatment, with a substantial share of individuals having 1+ prior episodes. Alcohol has the largest total number of admissions, but a smaller proportion involve prior treatment compared with opioids. These patterns suggest that policymakers planning additional treatment facilities should focus on programs that support individuals with repeated treatment needs, particularly for opioid use, and implement interventions aimed at improving treatment effectiveness and reducing readmissions.
+
+Data on treatment episode admissions comes from the Treatment Episode Data Set Admissions (TEDS-A) 2023 (Substance Abuse and Mental Health Services Administration, 2025). The full codebook is available at [SAMHSA](https://www.samhsa.gov/data/). 
+

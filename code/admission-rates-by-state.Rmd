@@ -1,0 +1,134 @@
+---
+title: "Visualization 1: Substance Use Treatment Admission Rates by State"
+author: "Sara Murley"
+output: html_document
+---
+
+```{r setup, echo = FALSE, include = FALSE}
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(tigris)
+library(tilegramsR)
+library(scales)
+
+options(tigris_use_cache = TRUE)
+```
+
+```{r, echo = FALSE}
+# Import data
+teds <- readr::read_csv("../data/tedsa_puf_2023.csv", show_col_types = FALSE)
+```
+
+```{r, echo = FALSE}
+# State crosswalk 
+stfips_crosswalk <- tribble(
+  ~STFIPS, ~State, ~Abbreviation,
+  1,"Alabama","AL", 2,"Alaska","AK", 4,"Arizona","AZ", 5,"Arkansas","AR",
+  6,"California","CA", 8,"Colorado","CO", 9,"Connecticut","CT", 10,"Delaware","DE",
+  11,"District of Columbia","DC", 12,"Florida","FL", 13,"Georgia","GA",
+  15,"Hawaii","HI", 16,"Idaho","ID", 17,"Illinois","IL", 18,"Indiana","IN",
+  19,"Iowa","IA", 20,"Kansas","KS", 21,"Kentucky","KY", 22,"Louisiana","LA",
+  23,"Maine","ME", 24,"Maryland","MD", 25,"Massachusetts","MA", 26,"Michigan","MI",
+  27,"Minnesota","MN", 28,"Mississippi","MS", 29,"Missouri","MO", 30,"Montana","MT",
+  31,"Nebraska","NE", 32,"Nevada","NV", 33,"New Hampshire","NH", 34,"New Jersey","NJ",
+  35,"New Mexico","NM", 36,"New York","NY", 37,"North Carolina","NC",
+  38,"North Dakota","ND", 39,"Ohio","OH", 40,"Oklahoma","OK", 41,"Oregon","OR",
+  42,"Pennsylvania","PA", 44,"Rhode Island","RI", 45,"South Carolina","SC",
+  46,"South Dakota","SD", 47,"Tennessee","TN", 48,"Texas","TX", 49,"Utah","UT",
+  50,"Vermont","VT", 51,"Virginia","VA", 53,"Washington","WA",
+  54,"West Virginia","WV", 55,"Wisconsin","WI", 56,"Wyoming","WY",
+  72,"Puerto Rico","PR"
+)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Prep Data
+
+# Join with State Crosswalk 
+teds_state <- teds %>% 
+  left_join(stfips_crosswalk, by = "STFIPS") 
+
+# Get State Populations
+state_pop <- get_acs(
+  geography = "state",
+  variables = "B01003_001",  # total population
+  year = 2023,
+  survey = "acs1"
+) %>%
+  select(NAME, population = estimate)
+
+# Calculate admission counts from TEDS data
+state_counts <- teds_state %>% 
+  group_by(State) %>%
+  summarise(admissions = n(), .groups = "drop")
+
+# Merge 
+state_counts <- state_counts %>%
+  left_join(state_pop, by = c("State" = "NAME")) %>% 
+  mutate(admissions_per_100k = (admissions / population) * 100000)
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+# Geometry
+usmap <- states()
+
+teds_geom <- usmap %>%
+  left_join(state_counts, by = c("NAME" = "State")) %>%
+  st_transform(5070) %>%
+  shift_geometry() %>%
+  filter(STATEFP <= 56)
+```
+
+```{r, echo = FALSE}
+# Plot
+custom_palette <- c("#b0d5cd", "#799da7", "#20494d", "#183c40")
+
+map_plot <- ggplot(teds_geom) +
+  geom_sf(aes(fill = admissions_per_100k), color = "white", linewidth = 0.2) +
+  scale_fill_gradientn(
+    name = "Admissions per 100,000",
+    colors = custom_palette,
+    na.value = "#f9f9f9",
+    labels = comma_format(accuracy = 1)
+  ) +
+  labs(
+    title = "Substance Use Treatment Admission Rates by State",
+    subtitle = "Admissions per 100,000 residents (2023)",
+    caption = "Sources: TEDS 2023 PUF; U.S. Census ACS 2023\nDelaware, South Carolina, and West Virginia reported insufficient data"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", color = "#183c40"),
+    plot.subtitle = element_text(size = 12, color = "#20494d", margin = margin(b = 15)),
+    legend.title = element_text(size = 11, face = "bold", color = "#183c40"),
+    legend.text = element_text(size = 10, color = "#20494d"),
+    plot.caption = element_text(size = 9, hjust = 1, color = "#799da7")
+  )
+
+map_plot
+```
+
+```{r, echo = FALSE}
+# Save Plot
+ggsave(
+  "../figures/admission-rates-by-state.png",
+  map_plot,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+```
+
+**Figure 1. Substance Use Treatment Admission Rates by State**
+
+This map shows substance use treatment admissions per 100,000 residents by state in 2023. States such as Maryland, Oregon, South Dakota, and New Jersey report the highest per-capita admission rates with over 800 per 100,000 residents. Idaho, Hawaii, and Montana show the lowest rates, below 100 per 100,000. While higher admission rates may reflect greater access to care, they can also indicate higher treatment need, stronger referral systems, or more robust data collection. Lower rates may reflect access barriers, insufficient facility capacity, or incomplete reporting.
+
+Treatment admissions are a key indicator of how effectively states are connecting individuals with substance use disorders to care. Expanding capacity and ensuring equitable access across regions can help reduce untreated addiction and its social and economic costs.
+
+The TEDS captures a large share of publicly funded treatment admissions but does not include all treatment facilities or clients. Coverage varies by state due to differences in licensure, reporting systems, and funding. Despite these limitations, the TEDS remains a critical tool for understanding national and regional trends in treatment access. Policymakers should interpret these figures as indicators of relative access and reporting completeness, not exact prevalence, and focus on strengthening systems where per-capita admissions remain low.
+
+Data on treatment episode admissions comes from the Treatment Episode Data Set Admissions (TEDS-A) 2023 (Substance Abuse and Mental Health Services Administration, 2025). The full codebook is available at [SAMHSA](https://www.samhsa.gov/data/). 
+
+

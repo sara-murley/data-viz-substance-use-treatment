@@ -1,0 +1,176 @@
+---
+title: "Visualization 4: Criminal Justice and Substance Abuse Treatment"
+author: "Sara Murley"
+output: html_document
+---
+
+```{r setup, echo = FALSE, include = FALSE}
+# Libraries 
+library(tidyverse)
+library(scales)
+
+```
+
+```{r, echo = FALSE}
+# Import data 
+teds = read.csv("../data/tedsa_puf_2023.csv")
+```
+
+
+```{r, echo = FALSE}
+# Merge on State ID 
+stfips_crosswalk <- tibble::tribble(
+  ~STFIPS, ~State,              ~Abbreviation,
+   1,      "Alabama",           "AL",
+   2,      "Alaska",            "AK",
+   4,      "Arizona",           "AZ",
+   5,      "Arkansas",          "AR",
+   6,      "California",        "CA",
+   8,      "Colorado",          "CO",
+   9,      "Connecticut",       "CT",
+   10,     "Delaware",          "DE",
+   11,     "District of Columbia","DC",
+   12,     "Florida",           "FL",
+   13,     "Georgia",           "GA",
+   15,     "Hawaii",            "HI",
+   16,     "Idaho",             "ID",
+   17,     "Illinois",          "IL",
+   18,     "Indiana",           "IN",
+   19,     "Iowa",              "IA",
+   20,     "Kansas",            "KS",
+   21,     "Kentucky",          "KY",
+   22,     "Louisiana",         "LA",
+   23,     "Maine",             "ME",
+   24,     "Maryland",          "MD",
+   25,     "Massachusetts",     "MA",
+   26,     "Michigan",          "MI",
+   27,     "Minnesota",         "MN",
+   28,     "Mississippi",       "MS",
+   29,     "Missouri",          "MO",
+   30,     "Montana",           "MT",
+   31,     "Nebraska",          "NE",
+   32,     "Nevada",            "NV",
+   33,     "New Hampshire",     "NH",
+   34,     "New Jersey",        "NJ",
+   35,     "New Mexico",        "NM",
+   36,     "New York",          "NY",
+   37,     "North Carolina",    "NC",
+   38,     "North Dakota",      "ND",
+   39,     "Ohio",              "OH",
+   40,     "Oklahoma",          "OK",
+   41,     "Oregon",            "OR",
+   42,     "Pennsylvania",      "PA",
+   44,     "Rhode Island",      "RI",
+   45,     "South Carolina",    "SC",
+   46,     "South Dakota",      "SD",
+   47,     "Tennessee",         "TN",
+   48,     "Texas",             "TX",
+   49,     "Utah",              "UT",
+   50,     "Vermont",           "VT",
+   51,     "Virginia",          "VA",
+   53,     "Washington",        "WA",
+   54,     "West Virginia",     "WV",
+   55,     "Wisconsin",         "WI",
+   56,     "Wyoming",           "WY",
+   72,     "Puerto Rico",       "PR"
+)
+```
+
+
+```{r, echo = FALSE}
+# Create drug categories and recode values 
+teds <- teds %>%
+  mutate(
+    SUB1_group = case_when(
+      SUB1 %in% c(2) ~ "Alcohol",
+      SUB1 %in% c(3) ~ "Cocaine/Crack",
+      SUB1 %in% c(4) ~ "Marijuana/Hashish",
+      SUB1 %in% c(5, 6, 7) ~ "Opioids (Heroin & Other)",
+      SUB1 %in% c(10, 11, 12) ~ "Amphetamines/Meth",
+      SUB1 %in% c(13, 14, 15, 16) ~ "Sedatives/Tranquilizers",
+      SUB1 %in% c(8, 9, 17, 18, 19) ~ "Other Drugs",
+      TRUE ~ NA_character_
+    ))
+```
+
+```{r, echo = FALSE}
+# Define theme colors from PowerPoint
+theme_colors <- list(
+  background = "#f9f9f9",
+  main_dark = "#183c40",
+  accent1 = "#799da7",
+  accent2 = "#b0d5cd",
+  accent3 = "#426345"
+)
+```
+
+
+
+```{r, echo = FALSE}
+# Step 1: Clean and compute % of criminal justice referrals by state
+psource_state <- teds %>%
+  filter(PSOURCE != -9) %>%  # remove missing/invalid
+  filter (STFIPS != 72) %>% 
+  group_by(STFIPS) %>%
+  summarise(
+    
+    total_referrals = n(),
+    cj_referrals = sum(PSOURCE == 7, na.rm = TRUE),
+    percent_cj = 100 * cj_referrals / total_referrals
+  ) %>%
+  left_join(stfips_crosswalk, by = "STFIPS") %>%
+  arrange(desc(percent_cj)) %>%
+  slice_head(n = 20)
+```
+
+```{r, echo = FALSE, warning = FALSE}
+# Plot
+p <- psource_state %>%
+  ggplot(aes(x = percent_cj, y = reorder(State, percent_cj))) +
+  geom_segment(aes(x = 0, xend = percent_cj, y = State, yend = State),
+               color = theme_colors$accent2, size = 0.8) +
+  geom_point(color = theme_colors$accent3, size = 3.5) +
+  geom_text(aes(label = sprintf("%d%%", round(percent_cj))),
+            hjust = -0.4, size = 3.2, color = theme_colors$main_dark) +
+  labs(
+    title = "Top 20 States by Criminal Justice Referrals to Treatment",
+    subtitle = "Percent of treatment admissions referred by courts/criminal justice",
+    x = NULL,
+    y = NULL,
+    caption = "Admissions with missing or unknown referral status were excluded (~20% of all admissions)."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold", color = theme_colors$main_dark, size = 16),
+    plot.subtitle = element_text(color = theme_colors$main_dark, size = 12),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1)))
+
+# Print plot
+print(p)
+```
+```{r, include = FALSE}
+# Save the plot as a PNG
+ggsave(
+  filename = "../figures/criminal-justice-patterns.png",  # path and filename
+  plot = p,                                                     # the plot object
+  width = 10,                                                   # width in inches
+  height = 6,                                                   # height in inches
+  dpi = 300                                                     # resolution
+)
+```
+
+
+
+**Figure 4. Criminal Justice Referrals to Treatment**
+
+Criminal justice referrals account for a substantial share of treatment admissions in some states, with four states—Idaho (71.3%), South Dakota (62.1%), Wyoming (59.4%), and Iowa (52.0%)—receiving more than half of their admissions through courts, probation, and other justice channels. Smaller and more rural states tend to rely more heavily on these pathways to connect individuals to care, while larger states such as Texas and Illinois draw a greater proportion of admissions from self-referrals and healthcare providers. In preparing for new treatment facilities, high-referral states should anticipate strong coordination with criminal justice agencies, including court systems, probation offices, and diversion programs, whereas facilities in lower-referral states may need to invest more in outreach through healthcare networks and community programs to ensure broad access. 
+
+It is important to note that the analysis excludes admissions with missing or unknown referral status (PSOURCE = -9). These missing values accounted for roughly 20% of all admissions and may include populations with unique access barriers or referral pathways. Removing these cases could slightly bias the observed percentages upward or downward in certain states, particularly those with larger proportions of missing data. Policymakers should consider this uncertainty when interpreting the figures and planning treatment capacity, ensuring that facilities are equipped to reach populations that may not appear in the referral statistics.
+
+Data on treatment episode admissions comes from the Treatment Episode Data Set Admissions (TEDS-A) 2023 (Substance Abuse and Mental Health Services Administration, 2025). The full codebook is available at [SAMHSA](https://www.samhsa.gov/data/). 
+
+
